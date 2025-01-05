@@ -29,6 +29,8 @@ async function run() {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
 
+
+        //ALL database collections
         const menuCollection = client.db("bistroDb").collection("menu");
         const reviewCollection = client.db("bistroDb").collection("reviews");
         const cartCollection = client.db("bistroDb").collection("carts")
@@ -51,10 +53,44 @@ async function run() {
             res.send(result)
         })
 
+        
+        
+        //All users
+        app.get('/users',async(req,res)=>{
+            const result = await userCollection.find().toArray();
+            res.send(result)
+        })
+
+
+        app.patch('/users/admin/:id',async(req,res)=>{
+            const id = req.params.id;
+            const filter = {_id: new ObjectId(id)}
+            const updatedDoc = {
+                $set: {
+                    role: 'admin'
+                }
+            }
+            const result= await userCollection.updateOne(filter,updatedDoc)
+            res.send(result)
+        })
+
+
+        //From Admin deletion user 
+        app.delete('/users/:id',async(req,res)=>{
+            const id =req.params.id;
+            const query = {_id: new ObjectId(id)}
+            const result =await userCollection.deleteOne(query);
+            res.send(result)
+        })
+
+        //Getting ALL menu items
         app.get("/menu", async (req, res) => {
             const result = await menuCollection.find().toArray();
             res.send(result);
         })
+        
+        
+        //Reviews Testimonials
         app.get("/reviews", async (req, res) => {
             const result = await reviewCollection.find().toArray();
             res.send(result);
@@ -76,6 +112,8 @@ async function run() {
             res.send(result)
         })
 
+
+
         //delete cart from dashboard user
         app.delete('/carts/:id',async(req,res)=>{
             const id = req.params.id;
@@ -83,6 +121,9 @@ async function run() {
             const result = await cartCollection.deleteOne(query);
             res.send(result)
         })
+        
+        
+        
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
