@@ -2,6 +2,7 @@ const express = require('express')
 const cors = require("cors")
 const app = express()
 require("dotenv").config();
+const jwt = require('jsonwebtoken');
 const port = process.env.PORT || 5000
 
 
@@ -36,16 +37,22 @@ async function run() {
         const cartCollection = client.db("bistroDb").collection("carts")
         const userCollection = client.db("bistroDb").collection('users');
 
+        //JWT related Api
+        app.post('/jwt', async (req, res) => {
+            const user = req.body;
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1h" });
+            res.send({token})
+        })
 
         //user realted API
-        app.post('/users',async(req,res)=>{
+        app.post('/users', async (req, res) => {
             const user = req.body;
-            
+
             //Checking if user is Exist or not
-            const query = {email: user.email};
+            const query = { email: user.email };
             const existingUser = await userCollection.findOne(query);
-            if(existingUser){
-                return res.send({message: "User Already Exists", insertedId: null})
+            if (existingUser) {
+                return res.send({ message: "User Already Exists", insertedId: null })
             }
 
             //adding new user
@@ -53,33 +60,77 @@ async function run() {
             res.send(result)
         })
 
-        
-        
+        //middlewares
+        const verifyToken = (req,res,next)=>{
+            console.log("inside verify Token",req.headers.authorization);
+            if(!req.headers.authorization){
+                return res.status(401).send({message: "Unauthorized Access"})
+            }
+            const token = req.headers.authorization.split(" ")[1];
+            jwt.verify(token,process.env.ACCESS_TOKEN_SECRET, (err,decoded)=>{
+                if(err){
+                    return res.status(401).send({message: "UnAuthorized Access"})
+                }
+                req.decoded = decoded;
+                next()
+            })
+            // next()
+        }
+
+        //use verify admin after verifyToken
+        const verifyAdmin = async(req,res,next)=>{
+            const email = req.decoded.email;
+            const query = {email: email}
+            const user = await userCollection.findOne(query);
+            const isAdmin = user?.role === 'admin';
+            if(!isAdmin){
+                return res.status(403).send({message: "Forbidden Access"})
+            }
+            next()
+        }
+
+
         //All users
-        app.get('/users',async(req,res)=>{
+        app.get('/users',verifyToken,verifyAdmin ,async (req, res) => {         
             const result = await userCollection.find().toArray();
             res.send(result)
         })
 
+        //admin api call using token verification by email
+        app.get('/users/admin/:email',verifyToken,async(req,res)=>{
+            const email = req.params.email;
 
-        app.patch('/users/admin/:id',async(req,res)=>{
+            if(email !== req.decoded.email){
+                return res.status(403).send({message: "Forbidden access"})
+            }
+            const query = {email: email};
+            const user = await userCollection.findOne(query);
+            let admin = false;
+            if(user){
+                admin = user?.role === 'admin';
+            }
+            res.send({admin})
+        })
+
+
+        app.patch('/users/admin/:id', verifyToken,verifyAdmin,async (req, res) => {
             const id = req.params.id;
-            const filter = {_id: new ObjectId(id)}
+            const filter = { _id: new ObjectId(id) }
             const updatedDoc = {
                 $set: {
                     role: 'admin'
                 }
             }
-            const result= await userCollection.updateOne(filter,updatedDoc)
+            const result = await userCollection.updateOne(filter, updatedDoc)
             res.send(result)
         })
 
 
         //From Admin deletion user 
-        app.delete('/users/:id',async(req,res)=>{
-            const id =req.params.id;
-            const query = {_id: new ObjectId(id)}
-            const result =await userCollection.deleteOne(query);
+        app.delete('/users/:id',verifyToken,verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const result = await userCollection.deleteOne(query);
             res.send(result)
         })
 
@@ -88,8 +139,8 @@ async function run() {
             const result = await menuCollection.find().toArray();
             res.send(result);
         })
-        
-        
+
+
         //Reviews Testimonials
         app.get("/reviews", async (req, res) => {
             const result = await reviewCollection.find().toArray();
@@ -97,16 +148,16 @@ async function run() {
         })
 
         // getting Cart from db and to client
-        app.get('/carts',async(req,res)=>{
-            const email =req.query.email;
-            const query = {email: email}
-            const result =await cartCollection.find(query).toArray();
+        app.get('/carts', async (req, res) => {
+            const email = req.query.email;
+            const query = { email: email }
+            const result = await cartCollection.find(query).toArray();
             res.send(result)
         })
 
 
         //carts Collections posting to db
-        app.post("/carts",async(req,res)=>{
+        app.post("/carts", async (req, res) => {
             const cartItem = req.body;
             const result = await cartCollection.insertOne(cartItem);
             res.send(result)
@@ -115,15 +166,15 @@ async function run() {
 
 
         //delete cart from dashboard user
-        app.delete('/carts/:id',async(req,res)=>{
+        app.delete('/carts/:id', async (req, res) => {
             const id = req.params.id;
-            const query = {_id:new ObjectId(id)}
+            const query = { _id: new ObjectId(id) }
             const result = await cartCollection.deleteOne(query);
             res.send(result)
         })
-        
-        
-        
+
+
+
         // Send a ping to confirm a successful connection
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
